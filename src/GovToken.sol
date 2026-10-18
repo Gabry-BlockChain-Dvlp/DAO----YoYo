@@ -6,11 +6,20 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {ERC20Votes} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Votes.sol";
 import {Nonces} from "@openzeppelin/contracts/utils/Nonces.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract YoYo is ERC20, ERC20Permit, ERC20Votes {
-    constructor() ERC20("YoYo", "Yo") ERC20Permit("YoYo") {}
+/// @notice Non-transfer-restricted governance shares with checkpointed, delegatable votes.
+/// The DAO governance contract must be made owner after deployment to mint shares from sales.
+contract YoYo is ERC20, ERC20Permit, ERC20Votes, Ownable {
+    constructor() ERC20("YoYo", "Yo") ERC20Permit("YoYo") Ownable(msg.sender) {}
 
-    // The following functions are overrides required by Solidity.
+    function mintFor(address account, uint256 amount) external onlyOwner {
+        _mint(account, amount);
+        // A new holder starts with direct voting power. Existing delegations are preserved.
+        if (delegates(account) == address(0)) {
+            _delegate(account, account);
+        }
+    }
 
     function _update(address from, address to, uint256 value)
         internal
@@ -19,12 +28,12 @@ contract YoYo is ERC20, ERC20Permit, ERC20Votes {
         super._update(from, to, value);
     }
 
-    function nonces(address owner)
+    function nonces(address owner_)
         public
         view
         override(ERC20Permit, Nonces)
         returns (uint256)
     {
-        return super.nonces(owner);
+        return super.nonces(owner_);
     }
 }
