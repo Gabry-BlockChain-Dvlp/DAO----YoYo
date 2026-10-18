@@ -20,10 +20,10 @@ A Foundry project implementing direct and liquid democracy with ERC-20 governanc
 
 1. Deploy the `YoYo` share token.
 2. Deploy the payment ERC-20 (or select an existing ERC-20).
-3. Deploy `TimeController`, granting the Governor address the proposer role and making execution available (for example, executor `address(0)`).
+3. Deploy `TimeController` with empty proposer and executor lists; the deployer is its temporary admin.
 4. Deploy `DaoGovernance` with the share token, payment token, price, timelock, and administrator address.
 5. Transfer ownership of `YoYo` to `DaoGovernance`. This authorizes the governance contract to mint shares for completed purchases.
-6. Configure the timelock roles for `DaoGovernance` and renounce the timelock admin role once setup is complete.
+6. As timelock admin, grant `DaoGovernance` the proposer role and make execution available (for example, grant executor role to `address(0)`). Then renounce the timelock admin role to finish setup.
 
 The share price is specified in payment-token smallest units per whole share, scaled by `1e18`. For example, `2e6` is a price of two USDC (6 decimals) per one share. Buyers call `approve` on the payment token and then `buyShares`. The administrator ends the initialization sale with `closeSale()`; closure is permanent.
 
