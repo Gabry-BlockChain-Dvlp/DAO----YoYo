@@ -37,3 +37,14 @@ The direct and liquid voting paths both use ERC20Votes delegation. A newly minte
 forge build
 forge test
 ```
+
+## Hardhat tests
+
+Install the JavaScript dependencies and run the governance integration suite:
+
+```sh
+npm install
+npm run test:hardhat
+```
+
+The Hardhat suite exercises share purchases and membership, proposal metadata, weighted snapshots, vote records and restrictions, majority/quorum outcomes, timelock execution, and treasury token transfers. Foundry remains available for the existing Solidity tests.

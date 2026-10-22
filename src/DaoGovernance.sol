@@ -3,7 +3,6 @@ pragma solidity ^0.8.27;
 
 import {Governor} from "@openzeppelin/contracts/governance/Governor.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
-import {GovernorCountingSimple} from "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
 import {GovernorSettings} from "@openzeppelin/contracts/governance/extensions/GovernorSettings.sol";
 import {GovernorTimelockControl} from "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
 import {GovernorVotes} from "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
@@ -22,7 +21,6 @@ interface IShareToken is IVotes {
 contract DaoGovernance is
     Governor,
     GovernorSettings,
-    GovernorCountingSimple,
     GovernorVotes,
     GovernorVotesQuorumFraction,
     GovernorTimelockControl,
@@ -44,6 +42,17 @@ contract DaoGovernance is
 
     mapping(uint256 proposalId => ProposalDetails details) public proposalDetails;
 
+    // Per-proposal tallies use each member's shares at the proposal snapshot.
+    struct ProposalVote {
+        uint256 againstVotes;
+        uint256 forVotes;
+        uint256 abstainVotes;
+        mapping(address voter => bool) hasVoted;
+    }
+    mapping(uint256 proposalId => ProposalVote tally) private _proposalVotes;
+
+    event VoteCast(address indexed voter, uint256 indexed proposalId, uint8 support, uint256 weight);
+
     event SharesPurchased(address indexed member, uint256 shares, uint256 payment);
     event SaleClosed();
     event ProposalRecorded(uint256 indexed proposalId, address indexed proposer, string title, string information);
@@ -52,6 +61,8 @@ contract DaoGovernance is
     error InvalidPurchase();
     error NotAMember();
     error EmptyTitle();
+    error InvalidVoteType();
+    error AlreadyVoted();
 
     constructor(
         IShareToken token,
@@ -137,6 +148,57 @@ contract DaoGovernance is
 
     function _requireMember() internal view {
         if (shareToken.balanceOf(msg.sender) == 0) revert NotAMember();
+    }
+
+    /// @notice Direct voting weight is the voter's own share balance at proposal creation.
+    /// Delegated shares are added by ERC20Votes to the delegate's checkpointed balance.
+    function _getVotes(address account, uint256 timepoint, bytes memory params)
+        internal view override(Governor, GovernorVotes) returns (uint256)
+    {
+        return super._getVotes(account, timepoint, params);
+    }
+
+    /// @notice Describes the ballot choices and quorum rule to Governor clients.
+    function COUNTING_MODE() public pure override returns (string memory) {
+        return "support=bravo&quorum=for,abstain";
+    }
+
+    /// @notice Count one vote per member, weighted by their shares at the proposal snapshot.
+    function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory)
+        internal override returns (uint256)
+    {
+        // Governor accepts zero-weight ballots unless the counting extension rejects them.
+        // Membership is based on owned shares, not delegated voting power.
+        if (shareToken.balanceOf(account) == 0) revert NotAMember();
+
+        ProposalVote storage tally = _proposalVotes[proposalId];
+        if (tally.hasVoted[account]) revert AlreadyVoted();
+        if (support > 2) revert InvalidVoteType();
+        tally.hasVoted[account] = true;
+        if (support == 0) tally.againstVotes += totalWeight;
+        else if (support == 1) tally.forVotes += totalWeight;
+        else tally.abstainVotes += totalWeight;
+        emit VoteCast(account, proposalId, support, totalWeight);
+        return totalWeight;
+    }
+
+    function hasVoted(uint256 proposalId, address account) public view override returns (bool) {
+        return _proposalVotes[proposalId].hasVoted[account];
+    }
+
+    function proposalVotes(uint256 proposalId) public view returns (uint256 againstVotes, uint256 forVotes, uint256 abstainVotes) {
+        ProposalVote storage tally = _proposalVotes[proposalId];
+        return (tally.againstVotes, tally.forVotes, tally.abstainVotes);
+    }
+
+    function _quorumReached(uint256 proposalId) internal view override returns (bool) {
+        ProposalVote storage tally = _proposalVotes[proposalId];
+        return quorum(proposalSnapshot(proposalId)) <= tally.forVotes + tally.abstainVotes;
+    }
+
+    function _voteSucceeded(uint256 proposalId) internal view override returns (bool) {
+        ProposalVote storage tally = _proposalVotes[proposalId];
+        return tally.forVotes > tally.againstVotes;
     }
 
     function state(uint256 proposalId)
