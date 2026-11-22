@@ -167,9 +167,9 @@ contract DaoGovernance is
     function _countVote(uint256 proposalId, address account, uint8 support, uint256 totalWeight, bytes memory)
         internal override returns (uint256)
     {
-        // Governor accepts zero-weight ballots unless the counting extension rejects them.
-        // Membership is based on owned shares, not delegated voting power.
-        if (shareToken.balanceOf(account) == 0) revert NotAMember();
+        // Use the proposal snapshot, not the voter's current token balance.
+        // This preserves votes after transfers and supports delegated voting power.
+        if (totalWeight == 0) revert NotAMember();
 
         ProposalVote storage tally = _proposalVotes[proposalId];
         if (tally.hasVoted[account]) revert AlreadyVoted();

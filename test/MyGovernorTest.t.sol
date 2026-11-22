@@ -166,6 +166,44 @@ contract MyGovernorTest is Test {
         dao.castVote(proposalId, 1);
     }
 
+    function testVoterCanVoteWithSnapshotPowerAfterTransferringShares() public {
+        _buyShares(alice, 100 * SHARE);
+        uint256 proposalId = _proposeSimple("Snapshot survives transfer");
+        _activate(proposalId);
+
+        vm.prank(alice);
+        shareToken.transfer(outsider, 100 * SHARE);
+        assertEq(shareToken.balanceOf(alice), 0);
+
+        vm.prank(alice);
+        dao.castVote(proposalId, 1);
+
+        (, uint256 forVotes,) = dao.proposalVotes(proposalId);
+        assertEq(forVotes, 100 * SHARE);
+        assertTrue(dao.hasVoted(proposalId, alice));
+    }
+
+    function testDelegateCanVoteWithDelegatedSnapshotPowerWithoutOwnShares() public {
+        _buyShares(alice, 10 * SHARE);
+        _buyShares(bob, 90 * SHARE);
+        vm.prank(bob);
+        shareToken.delegate(alice);
+
+        uint256 proposalId = _proposeSimple("Delegated snapshot vote");
+        _activate(proposalId);
+
+        vm.prank(alice);
+        shareToken.transfer(outsider, 10 * SHARE);
+        assertEq(shareToken.balanceOf(alice), 0);
+
+        vm.prank(alice);
+        dao.castVote(proposalId, 1);
+
+        (, uint256 forVotes,) = dao.proposalVotes(proposalId);
+        assertEq(forVotes, 100 * SHARE);
+        assertTrue(dao.hasVoted(proposalId, alice));
+    }
+
     function testMajorityDecisionIsQueuedAndExecutedByTimelock() public {
         _buyShares(alice, 60 * SHARE);
         _buyShares(bob, 40 * SHARE);
